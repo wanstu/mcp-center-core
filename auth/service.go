@@ -88,8 +88,12 @@ func (s *Service) BootstrapAdmin(username, password string) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
+	id, err := newID("usr")
+	if err != nil {
+		return User{}, err
+	}
 	now := s.now().UTC()
-	user := User{ID: newID("usr"), Username: username, Role: "admin", PasswordHash: hash, CreatedAt: now}
+	user := User{ID: id, Username: username, Role: "admin", PasswordHash: hash, CreatedAt: now}
 	st.Users = append(st.Users, user)
 	if err := s.saveLocked(st); err != nil {
 		return User{}, err
@@ -293,8 +297,10 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func newID(prefix string) string {
-	raw := make([]byte, 8)
-	_, _ = rand.Read(raw)
-	return prefix + "_" + hex.EncodeToString(raw)
+func newID(prefix string) (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return prefix + "_" + hex.EncodeToString(raw), nil
 }

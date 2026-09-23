@@ -218,8 +218,8 @@ func (s *Service) Approve(req AuthorizationRequest) (string, error) {
 }
 
 func (s *Service) ExchangeCode(clientID, code, redirectURI, verifier string) (TokenSet, error) {
-	if strings.TrimSpace(verifier) == "" {
-		return TokenSet{}, errors.New("oauth: code_verifier is required")
+	if len(verifier) < 43 || len(verifier) > 128 {
+		return TokenSet{}, errors.New("oauth: code_verifier must be 43-128 characters")
 	}
 	now := s.now().UTC()
 	hash := tokenHash(code)
