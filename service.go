@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,6 +16,9 @@ type Service struct {
 	store  *FileStore
 	now    func() time.Time
 	lookup func(string) (string, bool)
+
+	auditMu   sync.RWMutex
+	auditSink AuditSink
 }
 
 func New(store *FileStore) *Service {

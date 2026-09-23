@@ -86,7 +86,12 @@ func (s *Service) ListTools(ctx context.Context, id string) ([]Tool, error) {
 	return tools, nil
 }
 
-func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[string]any) (*mcp.CallToolResult, error) {
+func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[string]any) (result *mcp.CallToolResult, err error) {
+	started := time.Now().UTC()
+	defer func() {
+		s.emitAudit(ctx, newAuditEvent(ctx, id, name, started, arguments, result, err))
+	}()
+
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("tool name is required")
 	}
@@ -95,7 +100,8 @@ func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[s
 		return nil, err
 	}
 	defer session.Close()
-	return session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
+	return result, err
 }
 
 func (s *Service) connect(ctx context.Context, id string) (*mcp.ClientSession, error) {
