@@ -43,6 +43,7 @@ type AuthorizationRequest struct {
 	UserID              string
 	ClientID            string
 	RedirectURI         string
+	Resource            string
 	Scope               string
 	CodeChallenge       string
 	CodeChallengeMethod string
@@ -53,6 +54,7 @@ type authorizationCode struct {
 	UserID              string    `json:"user_id"`
 	ClientID            string    `json:"client_id"`
 	RedirectURI         string    `json:"redirect_uri"`
+	Resource            string    `json:"resource"`
 	Scope               string    `json:"scope,omitempty"`
 	CodeChallenge       string    `json:"code_challenge"`
 	CodeChallengeMethod string    `json:"code_challenge_method"`
@@ -65,6 +67,7 @@ type tokenGrant struct {
 	RefreshHash string    `json:"refresh_hash"`
 	UserID      string    `json:"user_id"`
 	ClientID    string    `json:"client_id"`
+	Resource    string    `json:"resource"`
 	Scope       string    `json:"scope,omitempty"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	RefreshAt   time.Time `json:"refresh_expires_at"`
@@ -74,6 +77,7 @@ type tokenGrant struct {
 type AccessGrant struct {
 	UserID    string    `json:"user_id"`
 	ClientID  string    `json:"client_id"`
+	Resource  string    `json:"resource"`
 	Scope     string    `json:"scope,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
@@ -193,6 +197,10 @@ func (s *Service) Approve(req AuthorizationRequest) (string, error) {
 	if _, err := s.ValidateAuthorization(req.ClientID, req.RedirectURI, req.CodeChallenge, req.CodeChallengeMethod); err != nil {
 		return "", err
 	}
+	resource, err := normalizeResource(req.Resource)
+	if err != nil {
+		return "", err
+	}
 	code, err := randomToken(32)
 	if err != nil {
 		return "", err
@@ -200,7 +208,7 @@ func (s *Service) Approve(req AuthorizationRequest) (string, error) {
 	now := s.now().UTC()
 	item := authorizationCode{
 		Hash: tokenHash(code), UserID: req.UserID, ClientID: req.ClientID,
-		RedirectURI: req.RedirectURI, Scope: normalizeScope(req.Scope),
+		RedirectURI: req.RedirectURI, Resource: resource, Scope: normalizeScope(req.Scope),
 		CodeChallenge: req.CodeChallenge, CodeChallengeMethod: req.CodeChallengeMethod,
 		CreatedAt: now, ExpiresAt: now.Add(s.codeTTL),
 	}
@@ -217,7 +225,7 @@ func (s *Service) Approve(req AuthorizationRequest) (string, error) {
 	return code, nil
 }
 
-func (s *Service) ExchangeCode(clientID, code, redirectURI, verifier string) (TokenSet, error) {
+func (s *Service) ExchangeCode(clientID, code, redirectURI, resource, verifier string) (TokenSet, error) {
 	if len(verifier) < 43 || len(verifier) > 128 {
 		return TokenSet{}, errors.New("oauth: code_verifier must be 43-128 characters")
 	}
@@ -242,15 +250,16 @@ func (s *Service) ExchangeCode(clientID, code, redirectURI, verifier string) (To
 	}
 	// Consume the code before issuing tokens so it remains one-time even if later validation fails.
 	st.Codes = append(st.Codes[:index], st.Codes[index+1:]...)
-	if item.ClientID != clientID || item.RedirectURI != redirectURI {
+	normalizedResource, resourceErr := normalizeResource(resource)
+	if resourceErr != nil || item.ClientID != clientID || item.RedirectURI != redirectURI || item.Resource != normalizedResource {
 		_ = s.saveLocked(st)
-		return TokenSet{}, errors.New("oauth: authorization code client or redirect mismatch")
+		return TokenSet{}, errors.New("oauth: authorization code client, redirect, or resource mismatch")
 	}
 	if item.CodeChallengeMethod != CodeChallengeMethodS256 || pkceChallenge(verifier) != item.CodeChallenge {
 		_ = s.saveLocked(st)
 		return TokenSet{}, errors.New("oauth: PKCE verification failed")
 	}
-	set, grant, err := s.issueTokens(item.UserID, item.ClientID, item.Scope, now)
+	set, grant, err := s.issueTokens(item.UserID, item.ClientID, item.Resource, item.Scope, now)
 	if err != nil {
 		return TokenSet{}, err
 	}
@@ -283,7 +292,7 @@ func (s *Service) Refresh(clientID, refreshToken string) (TokenSet, error) {
 	}
 	// Rotate refresh tokens. A successful refresh invalidates both old tokens.
 	st.Tokens = append(st.Tokens[:index], st.Tokens[index+1:]...)
-	set, grant, err := s.issueTokens(current.UserID, current.ClientID, current.Scope, now)
+	set, grant, err := s.issueTokens(current.UserID, current.ClientID, current.Resource, current.Scope, now)
 	if err != nil {
 		return TokenSet{}, err
 	}
@@ -306,14 +315,32 @@ func (s *Service) ValidateAccessToken(token string) (AccessGrant, error) {
 	for _, grant := range st.Tokens {
 		if grant.AccessHash == hash && now.Before(grant.ExpiresAt) {
 			return AccessGrant{
-				UserID: grant.UserID, ClientID: grant.ClientID, Scope: grant.Scope, ExpiresAt: grant.ExpiresAt,
+				UserID: grant.UserID, ClientID: grant.ClientID, Resource: grant.Resource,
+				Scope: grant.Scope, ExpiresAt: grant.ExpiresAt,
 			}, nil
 		}
 	}
 	return AccessGrant{}, errors.New("oauth: access token is invalid or expired")
 }
 
-func (s *Service) issueTokens(userID, clientID, scope string, now time.Time) (TokenSet, tokenGrant, error) {
+// ValidateAccessTokenForResource prevents a token issued for one MCP resource
+// from being replayed against another resource server.
+func (s *Service) ValidateAccessTokenForResource(token, resource string) (AccessGrant, error) {
+	grant, err := s.ValidateAccessToken(token)
+	if err != nil {
+		return AccessGrant{}, err
+	}
+	normalized, err := normalizeResource(resource)
+	if err != nil {
+		return AccessGrant{}, err
+	}
+	if grant.Resource != normalized {
+		return AccessGrant{}, errors.New("oauth: access token is not valid for this resource")
+	}
+	return grant, nil
+}
+
+func (s *Service) issueTokens(userID, clientID, resource, scope string, now time.Time) (TokenSet, tokenGrant, error) {
 	access, err := randomToken(32)
 	if err != nil {
 		return TokenSet{}, tokenGrant{}, err
@@ -324,7 +351,7 @@ func (s *Service) issueTokens(userID, clientID, scope string, now time.Time) (To
 	}
 	grant := tokenGrant{
 		AccessHash: tokenHash(access), RefreshHash: tokenHash(refresh),
-		UserID: userID, ClientID: clientID, Scope: scope,
+		UserID: userID, ClientID: clientID, Resource: resource, Scope: scope,
 		CreatedAt: now, ExpiresAt: now.Add(s.accessTTL), RefreshAt: now.Add(s.refreshTTL),
 	}
 	return TokenSet{
@@ -372,6 +399,32 @@ func normalizeClientMetadata(meta ClientMetadata) (ClientMetadata, error) {
 		return ClientMetadata{}, errors.New("oauth: authorization_code requires response_type code")
 	}
 	return meta, nil
+}
+
+func normalizeResource(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("oauth: invalid resource %q", raw)
+	}
+	if u.Fragment != "" || u.User != nil {
+		return "", errors.New("oauth: resource must not contain fragment or userinfo")
+	}
+	if u.Scheme != "https" {
+		host := u.Hostname()
+		ip := net.ParseIP(host)
+		if u.Scheme != "http" || (host != "localhost" && (ip == nil || !ip.IsLoopback())) {
+			return "", errors.New("oauth: resource must use https or loopback http")
+		}
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	if (u.Scheme == "https" && u.Port() == "443") || (u.Scheme == "http" && u.Port() == "80") {
+		u.Host = u.Hostname()
+	}
+	u.RawFragment = ""
+	u.Fragment = ""
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 func validateRedirectURI(raw string) error {

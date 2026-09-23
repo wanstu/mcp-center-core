@@ -20,25 +20,29 @@ func TestAuthorizationCodePKCEAndRefresh(t *testing.T) {
 	verifier := "test-code-verifier-that-is-long-enough-for-pkce"
 	code, err := service.Approve(AuthorizationRequest{
 		UserID: "usr_admin", ClientID: client.ID,
-		RedirectURI: client.RedirectURIs[0], Scope: "mcp:read mcp:manage",
+		RedirectURI: client.RedirectURIs[0], Resource: "https://mcp.example.test/mcp/demo",
+		Scope:         "mcp:*",
 		CodeChallenge: PKCEChallengeS256(verifier), CodeChallengeMethod: CodeChallengeMethodS256,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	set, err := service.ExchangeCode(client.ID, code, client.RedirectURIs[0], verifier)
+	set, err := service.ExchangeCode(client.ID, code, client.RedirectURIs[0], "https://mcp.example.test/mcp/demo", verifier)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if set.AccessToken == "" || set.RefreshToken == "" || set.TokenType != TokenTypeBearer {
 		t.Fatalf("invalid token set: %#v", set)
 	}
-	if _, err := service.ExchangeCode(client.ID, code, client.RedirectURIs[0], verifier); err == nil {
+	if _, err := service.ExchangeCode(client.ID, code, client.RedirectURIs[0], "https://mcp.example.test/mcp/demo", verifier); err == nil {
 		t.Fatal("authorization code must be one-time")
 	}
-	grant, err := service.ValidateAccessToken(set.AccessToken)
+	grant, err := service.ValidateAccessTokenForResource(set.AccessToken, "https://mcp.example.test/mcp/demo")
 	if err != nil || grant.UserID != "usr_admin" {
 		t.Fatalf("validate access token: %#v %v", grant, err)
+	}
+	if _, err := service.ValidateAccessTokenForResource(set.AccessToken, "https://mcp.example.test/mcp/other"); err == nil {
+		t.Fatal("token must be resource-bound")
 	}
 	refreshed, err := service.Refresh(client.ID, set.RefreshToken)
 	if err != nil {
