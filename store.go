@@ -86,6 +86,16 @@ func (s *FileStore) Put(def Definition) error {
 	return s.saveLocked(st)
 }
 
+func (s *FileStore) ReplaceAll(items []Definition) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := state{Version: 1, MCPs: make([]Definition, len(items))}
+	for i := range items {
+		st.MCPs[i] = cloneDefinition(items[i])
+	}
+	return s.saveLocked(st)
+}
+
 func (s *FileStore) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
