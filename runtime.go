@@ -54,7 +54,7 @@ func (s *Service) Probe(ctx context.Context, id string) (HealthStatus, error) {
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	tools, err := s.ListTools(probeCtx, id)
+	tools, err := s.Refresh(probeCtx, id)
 	if err != nil {
 		kind := ClassifyError(err)
 		return HealthStatus{
@@ -68,22 +68,29 @@ func (s *Service) Probe(ctx context.Context, id string) (HealthStatus, error) {
 }
 
 func (s *Service) ListTools(ctx context.Context, id string) ([]Tool, error) {
-	session, err := s.connect(ctx, id)
+	entry := s.runtimeEntry(id)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	if entry.toolsLoaded {
+		entry.lastUsedAt = s.now().UTC()
+		return cloneTools(entry.tools), nil
+	}
+	session, err := s.ensureSessionLocked(ctx, id, entry)
 	if err != nil {
 		return nil, err
 	}
-	defer session.Close()
-	result, err := session.ListTools(ctx, nil)
+	tools, err := listToolsFromSession(ctx, session)
+	entry.lastUsedAt = s.now().UTC()
 	if err != nil {
+		s.failSessionLocked(entry, err)
 		return nil, err
 	}
-	tools := make([]Tool, 0, len(result.Tools))
-	for _, tool := range result.Tools {
-		tools = append(tools, Tool{
-			Name: tool.Name, Title: tool.Title, Description: tool.Description, InputSchema: tool.InputSchema,
-		})
-	}
-	return tools, nil
+	entry.tools = cloneTools(tools)
+	entry.toolsLoaded = true
+	entry.errorKind = ""
+	entry.lastError = ""
+	return cloneTools(tools), nil
 }
 
 func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[string]any) (result *mcp.CallToolResult, err error) {
@@ -95,16 +102,27 @@ func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[s
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("tool name is required")
 	}
-	session, err := s.connect(ctx, id)
+	entry := s.runtimeEntry(id)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	session, err := s.ensureSessionLocked(ctx, id, entry)
 	if err != nil {
 		return nil, err
 	}
-	defer session.Close()
+	entry.lastUsedAt = s.now().UTC()
 	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
-	return result, err
+	entry.lastUsedAt = s.now().UTC()
+	if err != nil {
+		s.failSessionLocked(entry, err)
+		return nil, err
+	}
+	entry.errorKind = ""
+	entry.lastError = ""
+	return result, nil
 }
 
-func (s *Service) connect(ctx context.Context, id string) (*mcp.ClientSession, error) {
+func (s *Service) connectFresh(ctx context.Context, id string) (*mcp.ClientSession, error) {
 	activation, err := s.Resolve(id)
 	if err != nil {
 		return nil, err

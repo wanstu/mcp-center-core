@@ -19,10 +19,16 @@ type Service struct {
 
 	auditMu   sync.RWMutex
 	auditSink AuditSink
+
+	runtimeMu sync.Mutex
+	runtime   map[string]*runtimeEntry
 }
 
 func New(store *FileStore) *Service {
-	return &Service{store: store, now: time.Now, lookup: os.LookupEnv}
+	return &Service{
+		store: store, now: time.Now, lookup: os.LookupEnv,
+		runtime: map[string]*runtimeEntry{},
+	}
 }
 
 func (s *Service) Store() *FileStore { return s.store }
@@ -90,10 +96,18 @@ func (s *Service) Update(id string, cfg Config) (Definition, error) {
 	if err := s.store.Put(def); err != nil {
 		return Definition{}, err
 	}
+	s.invalidateRuntime(def.ID)
 	return cloneDefinition(def), nil
 }
 
-func (s *Service) Remove(id string) error { return s.store.Delete(strings.TrimSpace(id)) }
+func (s *Service) Remove(id string) error {
+	id = strings.TrimSpace(id)
+	if err := s.store.Delete(id); err != nil {
+		return err
+	}
+	s.invalidateRuntime(id)
+	return nil
+}
 
 func Validate(cfg Config) (Definition, error) {
 	def := Definition{

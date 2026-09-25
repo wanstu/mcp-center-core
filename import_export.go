@@ -127,6 +127,7 @@ func (s *Service) ImportJSON(data []byte, format, conflict string) (ImportResult
 	if err := s.store.ReplaceAll(current); err != nil {
 		return ImportResult{}, err
 	}
+	s.DisconnectAll()
 	return result, nil
 }
 
