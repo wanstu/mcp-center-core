@@ -230,6 +230,10 @@ func validateCredentials(username, password string) error {
 	if len(username) < 3 || len(username) > 64 {
 		return errors.New("auth: username must be 3-64 characters")
 	}
+	return validatePassword(password)
+}
+
+func validatePassword(password string) error {
 	if len(password) < 10 {
 		return errors.New("auth: password must be at least 10 characters")
 	}
