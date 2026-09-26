@@ -13,9 +13,11 @@ import (
 )
 
 type Service struct {
-	store  *FileStore
-	now    func() time.Time
-	lookup func(string) (string, bool)
+	store *FileStore
+	now   func() time.Time
+
+	lookupMu sync.RWMutex
+	lookup   func(string) (string, bool)
 
 	auditMu   sync.RWMutex
 	auditSink AuditSink
@@ -32,6 +34,27 @@ func New(store *FileStore) *Service {
 }
 
 func (s *Service) Store() *FileStore { return s.store }
+
+func (s *Service) SetVariableLookup(lookup func(string) (string, bool)) {
+	s.lookupMu.Lock()
+	if lookup == nil {
+		s.lookup = os.LookupEnv
+	} else {
+		s.lookup = lookup
+	}
+	s.lookupMu.Unlock()
+	s.DisconnectAll()
+}
+
+func (s *Service) lookupVariable(name string) (string, bool) {
+	s.lookupMu.RLock()
+	lookup := s.lookup
+	s.lookupMu.RUnlock()
+	if lookup == nil {
+		return os.LookupEnv(name)
+	}
+	return lookup(name)
+}
 
 func (s *Service) List() ([]Definition, error) {
 	items, err := s.store.List()
@@ -193,7 +216,7 @@ func (s *Service) expand(value string) (string, bool) {
 		if i := strings.Index(key, ":-"); i >= 0 {
 			name, fallback, hasFallback = key[:i], key[i+2:], true
 		}
-		if current, ok := s.lookup(name); ok && (!hasFallback || current != "") {
+		if current, ok := s.lookupVariable(name); ok && (!hasFallback || current != "") {
 			return current
 		}
 		if hasFallback {
