@@ -69,6 +69,26 @@ func (s *Service) List() ([]Definition, error) {
 
 func (s *Service) Get(id string) (Definition, error) { return s.store.Get(id) }
 
+func (s *Service) GetByRef(ref string) (Definition, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return Definition{}, fmt.Errorf("mcp reference is required")
+	}
+	if def, err := s.store.Get(ref); err == nil {
+		return def, nil
+	}
+	items, err := s.List()
+	if err != nil {
+		return Definition{}, err
+	}
+	for _, item := range items {
+		if strings.EqualFold(item.Name, ref) {
+			return item, nil
+		}
+	}
+	return Definition{}, fmt.Errorf("mcp %q not found", ref)
+}
+
 func (s *Service) Add(cfg Config) (Definition, error) {
 	def, err := Validate(cfg)
 	if err != nil {

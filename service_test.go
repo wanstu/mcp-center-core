@@ -39,6 +39,50 @@ func TestFileStoreAndCRUD(t *testing.T) {
 	}
 }
 
+func TestGetByRefSupportsIDAndNameWithIDPriority(t *testing.T) {
+	store, err := NewFileStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(store)
+	first, err := service.Add(Config{Name: "wm_test_db", Endpoint: "http://127.0.0.1:9000/mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Add(Config{Name: first.ID, Endpoint: "http://127.0.0.1:9001/mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byID, err := service.GetByRef(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byID.ID != first.ID {
+		t.Fatalf("ID lookup should win over name collision: %#v", byID)
+	}
+
+	byName, err := service.GetByRef("WM_TEST_DB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byName.ID != first.ID {
+		t.Fatalf("name lookup = %#v, want %#v", byName, first)
+	}
+
+	bySecondID, err := service.GetByRef(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bySecondID.ID != second.ID {
+		t.Fatalf("second ID lookup = %#v", bySecondID)
+	}
+
+	if _, err := service.GetByRef("missing"); err == nil {
+		t.Fatal("expected missing reference error")
+	}
+}
+
 func TestValidateSecretReferences(t *testing.T) {
 	_, err := Validate(Config{
 		Name: "secure", Transport: TransportStreamableHTTP, AuthMode: AuthHeaders,
