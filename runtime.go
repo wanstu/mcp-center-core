@@ -127,7 +127,7 @@ func (s *Service) connectFresh(ctx context.Context, id string) (*mcp.ClientSessi
 	if err != nil {
 		return nil, err
 	}
-	transport, err := transportFor(ctx, activation)
+	transport, err := transportFor(activation)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (s *Service) connectFresh(ctx context.Context, id string) (*mcp.ClientSessi
 	return client.Connect(ctx, transport, nil)
 }
 
-func transportFor(ctx context.Context, activation Activation) (mcp.Transport, error) {
+func transportFor(activation Activation) (mcp.Transport, error) {
 	switch activation.Transport {
 	case TransportStreamableHTTP:
 		transport := &mcp.StreamableClientTransport{
@@ -148,7 +148,10 @@ func transportFor(ctx context.Context, activation Activation) (mcp.Transport, er
 		}
 		return transport, nil
 	case TransportStdio:
-		cmd := exec.CommandContext(ctx, activation.Executable, activation.Args...)
+		// The stdio process belongs to the reusable runtime session, not to
+		// the HTTP/admin request that happened to create that session.
+		// CommandTransport terminates the child when the session closes.
+		cmd := exec.Command(activation.Executable, activation.Args...)
 		cmd.Env = os.Environ()
 		for k, v := range activation.Env {
 			cmd.Env = append(cmd.Env, k+"="+v)
