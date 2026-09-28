@@ -2,6 +2,7 @@ package mcpcenter
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,40 @@ func TestFileStoreAndCRUD(t *testing.T) {
 	items, err = service.List()
 	if err != nil || len(items) != 0 {
 		t.Fatalf("expected empty list: %#v %v", items, err)
+	}
+}
+
+func TestDisabledMCPRejectsActivationAndCanBeReenabled(t *testing.T) {
+	store, err := NewFileStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(store)
+	added, err := service.Add(Config{
+		Name: "disabled-demo", Endpoint: "http://127.0.0.1:9000/mcp", Disabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !added.Disabled {
+		t.Fatalf("disabled state was not persisted: %#v", added)
+	}
+	if _, err := service.Resolve(added.ID); err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("expected disabled activation error, got %v", err)
+	}
+	updated, err := service.SetDisabled(added.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Disabled {
+		t.Fatalf("MCP should be enabled after update: %#v", updated)
+	}
+	activation, err := service.Resolve(added.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if activation.Endpoint != "http://127.0.0.1:9000/mcp" {
+		t.Fatalf("unexpected activation: %#v", activation)
 	}
 }
 

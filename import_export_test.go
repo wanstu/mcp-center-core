@@ -114,6 +114,7 @@ func TestCoreExportRoundTripAndNoRuntimeIDs(t *testing.T) {
 	_, err := svc.Add(Config{
 		Name:           "roundtrip",
 		DefaultInclude: true,
+		Disabled:       true,
 		Transport:      TransportStdio,
 		AuthMode:       AuthNone,
 		Executable:     "python",
@@ -149,7 +150,7 @@ func TestCoreExportRoundTripAndNoRuntimeIDs(t *testing.T) {
 		t.Fatalf("unexpected roundtrip result: %#v", result)
 	}
 	items, _ := other.List()
-	if len(items) != 1 || !items[0].DefaultInclude || items[0].Executable != "python" || !items[0].HealthPolicy.AutoReconnect {
+	if len(items) != 1 || !items[0].DefaultInclude || !items[0].Disabled || items[0].Executable != "python" || !items[0].HealthPolicy.AutoReconnect {
 		t.Fatalf("roundtrip mismatch: %#v", items)
 	}
 }

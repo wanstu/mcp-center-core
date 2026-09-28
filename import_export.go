@@ -270,6 +270,7 @@ func configFromDefinition(item Definition) Config {
 		DefaultInclude: item.DefaultInclude,
 		Transport:      item.Transport,
 		AuthMode:       item.AuthMode,
+		Disabled:       item.Disabled,
 		Endpoint:       item.Endpoint,
 		HeaderRefs:     cloneMap(item.HeaderRefs),
 		Executable:     item.Executable,

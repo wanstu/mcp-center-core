@@ -24,6 +24,7 @@ type Definition struct {
 	DefaultInclude bool              `json:"default_include_in_environment"`
 	Transport      string            `json:"transport"`
 	AuthMode       string            `json:"auth_mode"`
+	Disabled       bool              `json:"disabled,omitempty"`
 	Endpoint       string            `json:"endpoint,omitempty"`
 	HeaderRefs     map[string]string `json:"header_refs,omitempty"`
 	Executable     string            `json:"executable,omitempty"`
@@ -39,6 +40,7 @@ type Config struct {
 	DefaultInclude bool              `json:"default_include_in_environment"`
 	Transport      string            `json:"transport"`
 	AuthMode       string            `json:"auth_mode"`
+	Disabled       bool              `json:"disabled,omitempty"`
 	Endpoint       string            `json:"endpoint,omitempty"`
 	HeaderRefs     map[string]string `json:"header_refs,omitempty"`
 	Executable     string            `json:"executable,omitempty"`

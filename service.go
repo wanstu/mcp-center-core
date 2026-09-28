@@ -143,6 +143,23 @@ func (s *Service) Update(id string, cfg Config) (Definition, error) {
 	return cloneDefinition(def), nil
 }
 
+func (s *Service) SetDisabled(id string, disabled bool) (Definition, error) {
+	current, err := s.store.Get(strings.TrimSpace(id))
+	if err != nil {
+		return Definition{}, err
+	}
+	if current.Disabled == disabled {
+		return cloneDefinition(current), nil
+	}
+	current.Disabled = disabled
+	current.UpdatedAt = s.now().UTC()
+	if err := s.store.Put(current); err != nil {
+		return Definition{}, err
+	}
+	s.invalidateRuntime(current.ID)
+	return cloneDefinition(current), nil
+}
+
 func (s *Service) Remove(id string) error {
 	id = strings.TrimSpace(id)
 	if err := s.store.Delete(id); err != nil {
@@ -158,6 +175,7 @@ func Validate(cfg Config) (Definition, error) {
 		DefaultInclude: cfg.DefaultInclude,
 		Transport:      strings.TrimSpace(cfg.Transport),
 		AuthMode:       strings.TrimSpace(cfg.AuthMode),
+		Disabled:       cfg.Disabled,
 		Endpoint:       strings.TrimSpace(cfg.Endpoint),
 		HeaderRefs:     trimMap(cfg.HeaderRefs),
 		Executable:     strings.TrimSpace(cfg.Executable),

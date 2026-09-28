@@ -31,6 +31,9 @@ func (s *Service) Resolve(id string) (Activation, error) {
 	if err != nil {
 		return Activation{}, err
 	}
+	if def.Disabled {
+		return Activation{}, fmt.Errorf("mcp %q is disabled", def.Name)
+	}
 	endpoint, missingEndpoint := s.expand(def.Endpoint)
 	headers, missingHeaders := s.resolveMap(def.HeaderRefs)
 	env, missingEnv := s.resolveMap(def.EnvRefs)
