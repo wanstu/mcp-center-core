@@ -1,5 +1,8 @@
 # MCP Center Core
 
+> License: **BSD 3-Clause** (SPDX: `BSD-3-Clause`). Copyright (c) 2026 wanstu.
+> See [LICENSE](LICENSE). Third-party Go dependencies retain their own licenses.
+
 从 AI Dev Manager 的 MCP 能力抽出的纯 Go 核心库。
 
 当前提供：
