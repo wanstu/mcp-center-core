@@ -21,7 +21,7 @@ jobs:
       RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.RELEASE_REF }}
           fetch-depth: 0
@@ -37,7 +37,7 @@ jobs:
           test "$tag_commit" = "$head_commit"
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
