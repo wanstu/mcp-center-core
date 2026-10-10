@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Existing release tag to verify/publish
+        required: true
+        default: v0.1.1
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+
+      - name: Verify tag checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          tag_commit="$(git rev-list -n 1 "$RELEASE_REF")"
+          head_commit="$(git rev-parse HEAD)"
+          test -n "$tag_commit"
+          test "$tag_commit" = "$head_commit"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./... -count=1 -timeout 60s
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_REF" >/dev/null 2>&1; then
+            echo "Release $RELEASE_REF already exists; verification passed."
+            exit 0
+          fi
+          args=(release create "$RELEASE_REF" --verify-tag --generate-notes --title "MCP Center Core $RELEASE_REF")
+          if [[ "$RELEASE_REF" == *-* ]]; then
+            args+=(--prerelease)
+          else
+            args+=(--latest)
+          fi
+          gh "${args[@]}"
