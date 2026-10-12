@@ -30,13 +30,14 @@ type RuntimeStatus struct {
 type runtimeEntry struct {
 	mu sync.Mutex
 
-	session     *mcp.ClientSession
-	connectedAt time.Time
-	lastUsedAt  time.Time
-	tools       []Tool
-	toolsLoaded bool
-	errorKind   string
-	lastError   string
+	session       *mcp.ClientSession
+	sessionCancel context.CancelFunc
+	connectedAt   time.Time
+	lastUsedAt    time.Time
+	tools         []Tool
+	toolsLoaded   bool
+	errorKind     string
+	lastError     string
 }
 
 func (s *Service) runtimeEntry(id string) *runtimeEntry {
@@ -151,7 +152,7 @@ func (s *Service) ensureSessionLocked(ctx context.Context, id string, entry *run
 	if entry.session != nil {
 		return entry.session, nil
 	}
-	session, err := s.connectFresh(ctx, id)
+	session, sessionCancel, err := s.connectFresh(ctx, id)
 	if err != nil {
 		entry.errorKind = ClassifyError(err)
 		entry.lastError = err.Error()
@@ -159,6 +160,7 @@ func (s *Service) ensureSessionLocked(ctx context.Context, id string, entry *run
 	}
 	now := s.now().UTC()
 	entry.session = session
+	entry.sessionCancel = sessionCancel
 	entry.connectedAt = now
 	entry.lastUsedAt = now
 	entry.errorKind = ""
@@ -175,6 +177,10 @@ func (s *Service) failSessionLocked(entry *runtimeEntry, err error) {
 }
 
 func closeRuntimeSessionLocked(entry *runtimeEntry) {
+	if entry.sessionCancel != nil {
+		entry.sessionCancel()
+		entry.sessionCancel = nil
+	}
 	if entry.session != nil {
 		_ = entry.session.Close()
 		entry.session = nil
