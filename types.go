@@ -4,6 +4,7 @@ import "time"
 
 const (
 	TransportStreamableHTTP = "streamable-http"
+	TransportSSE            = "sse"
 	TransportStdio          = "stdio"
 
 	AuthNone    = "none"
