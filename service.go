@@ -202,9 +202,9 @@ func Validate(cfg Config) (Definition, error) {
 		return Definition{}, fmt.Errorf("auto reconnect requires a positive reconnect interval")
 	}
 	switch def.Transport {
-	case TransportStreamableHTTP:
+	case TransportStreamableHTTP, TransportSSE:
 		if def.Executable != "" || len(def.Args) > 0 || len(def.EnvRefs) > 0 {
-			return Definition{}, fmt.Errorf("streamable-http mcp cannot configure stdio fields")
+			return Definition{}, fmt.Errorf("http mcp cannot configure stdio fields")
 		}
 		if !validHTTPTemplate(def.Endpoint) {
 			return Definition{}, fmt.Errorf("mcp endpoint must be a valid http(s) URL or environment template")

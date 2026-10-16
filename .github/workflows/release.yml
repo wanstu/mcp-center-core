@@ -35,6 +35,11 @@ jobs:
           head_commit="$(git rev-parse HEAD)"
           test -n "$tag_commit"
           test "$tag_commit" = "$head_commit"
+          git fetch origin master
+          if ! git merge-base --is-ancestor "$tag_commit" origin/master; then
+            echo "ERROR: release tag must come from merged master, not an unmerged release branch" >&2
+            exit 1
+          fi
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0

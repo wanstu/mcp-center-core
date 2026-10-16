@@ -3,7 +3,7 @@ module github.com/wanstu/mcp-center-core
 go 1.26.0
 
 require (
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/crypto v0.57.0
 )
 

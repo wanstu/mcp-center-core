@@ -35,6 +35,7 @@ type genericBundle struct {
 }
 
 type genericServer struct {
+	Type    string            `json:"type,omitempty"`
 	URL     string            `json:"url,omitempty"`
 	Command string            `json:"command,omitempty"`
 	Args    []string          `json:"args,omitempty"`
@@ -152,8 +153,11 @@ func (s *Service) ExportJSON(format string) ([]byte, error) {
 		servers := make(map[string]genericServer, len(items))
 		for _, item := range items {
 			switch item.Transport {
-			case TransportStreamableHTTP:
+			case TransportStreamableHTTP, TransportSSE:
 				server := genericServer{URL: item.Endpoint}
+				if item.Transport == TransportSSE {
+					server.Type = TransportSSE
+				}
 				if len(item.HeaderRefs) > 0 {
 					server.Headers = cloneMap(item.HeaderRefs)
 				}
@@ -241,9 +245,17 @@ func configFromGeneric(name string, server genericServer) (Config, error) {
 	}
 
 	if hasURL {
+		transport := TransportStreamableHTTP
+		switch strings.ToLower(strings.TrimSpace(server.Type)) {
+		case "", "http", "streamable-http", "streamablehttp":
+		case "sse":
+			transport = TransportSSE
+		default:
+			return Config{}, fmt.Errorf("mcpServers[%q] has unsupported transport %q", name, server.Type)
+		}
 		cfg := Config{
 			Name:      name,
-			Transport: TransportStreamableHTTP,
+			Transport: transport,
 			AuthMode:  AuthNone,
 			Endpoint:  strings.TrimSpace(server.URL),
 		}

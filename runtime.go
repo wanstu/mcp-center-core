@@ -114,7 +114,9 @@ func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[s
 		return nil, err
 	}
 	entry.lastUsedAt = s.now().UTC()
-	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
+	outboundCtx, release := isolatedMCPContext(ctx)
+	defer release()
+	result, err = session.CallTool(outboundCtx, &mcp.CallToolParams{Name: name, Arguments: arguments})
 	entry.lastUsedAt = s.now().UTC()
 	if err != nil {
 		s.failSessionLocked(entry, err)
@@ -125,17 +127,16 @@ func (s *Service) CallTool(ctx context.Context, id, name string, arguments map[s
 	return result, nil
 }
 
-func (s *Service) connectFresh(ctx context.Context, id string) (*mcp.ClientSession, error) {
+func (s *Service) connectFresh(ctx context.Context, id string) (*mcp.ClientSession, context.CancelFunc, error) {
 	activation, err := s.Resolve(id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	transport, err := transportFor(activation)
+	session, err := OpenSession(ctx, activation)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-center-core", Version: "0.1.0"}, nil)
-	return client.Connect(ctx, transport, nil)
+	return session.client, session.cancel, nil
 }
 
 func transportFor(activation Activation) (mcp.Transport, error) {
@@ -148,6 +149,12 @@ func transportFor(activation Activation) (mcp.Transport, error) {
 			transport.HTTPClient = &http.Client{
 				Transport: headerRoundTripper{base: http.DefaultTransport, headers: activation.Headers},
 			}
+		}
+		return transport, nil
+	case TransportSSE:
+		transport := &mcp.SSEClientTransport{Endpoint: activation.Endpoint}
+		if len(activation.Headers) > 0 {
+			transport.HTTPClient = &http.Client{Transport: headerRoundTripper{base: http.DefaultTransport, headers: activation.Headers}}
 		}
 		return transport, nil
 	case TransportStdio:
